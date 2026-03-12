@@ -1,0 +1,25 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap');
+@import "tailwindcss";
+@keyframes pulse-eye {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.95); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-8px); }
+  40%       { transform: translateX(8px); }
+  60%       { transform: translateX(-5px); }
+  80%       { transform: translateX(5px); }
+}
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pulse-eye { animation: pulse-eye 4s ease-in-out infinite; }
+.animate-shake     { animation: shake 0.4s ease; }
+.animate-fade-up   { animation: fadeSlideUp 0.3s ease forwards; }
+
+.font-cinzel    { font-family: 'Cinzel', serif; }
+.font-mono-plex { font-family: 'IBM Plex Mono', monospace; }
