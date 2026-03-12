@@ -1,0 +1,33 @@
+# ── Python / FastAPI ──────────────────────────────
+argusVenv/
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+.pytest_cache/
+
+# HuggingFace model cache — these are huge, don't commit them
+*.bin
+*.safetensors
+*.h5
+models/cache/
+
+# ── Node / Express ────────────────────────────────
+server/node_modules/
+server/.env
+
+# ── React / Vite ──────────────────────────────────
+client/node_modules/
+client/dist/
+client/.env
+client/.env.local
+client/.env.production
+
+# ── General ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
