@@ -4,13 +4,19 @@ import { useDebate } from '../context/DebateContext'
 
 const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
-const DURATIONS = [          // ← add this block here
+const DURATIONS = [
   { label: '3 MIN',  value: 180 },
   { label: '5 MIN',  value: 300 },
   { label: '10 MIN', value: 600 },
   { label: '15 MIN', value: 900 },
 ]
 
+const TURN_DURATIONS = [
+  { label: '30 SEC',  value: 30 },
+  { label: '60 SEC',  value: 60 },
+  { label: '90 SEC',  value: 90 },
+  { label: '∞',       value: 0  },  // 0 = infinite
+]
 
 // ─── Username Gate ────────────────────────────────────────────────────────────
 const UsernameGate = ({ onConfirm }) => {
@@ -63,13 +69,13 @@ const UsernameGate = ({ onConfirm }) => {
 const CreatePanel = ({ username }) => {
   const [topicInput, setTopicInput] = useState('')
   const [selectedDuration, setSelectedDuration] = useState(300)
-  const [customMinutes, setCustomMinutes] = useState('')
+  const [selectedTurnDuration, setSelectedTurnDuration] = useState(30)
+  const [customTurnSeconds, setCustomTurnSeconds] = useState('')
+  const [useCustomTurn, setUseCustomTurn] = useState(false)
   const [generatedCode, setGeneratedCode] = useState('')
-  const [useCustom, setUseCustom] = useState(false)
   const [copied, setCopied] = useState(false)
-  const { setRoomId, setRole, setTopic, setUsername, setDuration } = useDebate()
+  const { setRoomId, setRole, setTopic, setUsername, setDuration, setTurnDuration } = useDebate()
   const navigate = useNavigate()
-  
 
   const handleGenerate = () => {
     if (!topicInput.trim()) return
@@ -83,21 +89,23 @@ const CreatePanel = ({ username }) => {
     setTimeout(() => setCopied(false), 2000)
   }
 
- const handleStart = () => {
-  if (!generatedCode || !topicInput.trim()) return
-  const finalDuration = useCustom
-    ? Math.max(60, Math.min(7200, parseInt(customMinutes) * 60)) // clamp 1min–2hrs
-    : selectedDuration
-  setUsername(username)
-  setRoomId(generatedCode)
-  setRole('debater_a')
-  setTopic(topicInput.trim())
-  setDuration(finalDuration)
-  navigate(`/debate/${generatedCode}`)
-}
-
-  
-
+  const handleStart = () => {
+    if (!generatedCode || !topicInput.trim()) return
+    const finalTurn = useCustomTurn
+      ? Math.max(10, Math.min(300, parseInt(customTurnSeconds) || 30))
+      : selectedTurnDuration
+    // Pass everything via navigation state to avoid async context timing issues
+    navigate(`/debate/${generatedCode}`, {
+      state: {
+        username,
+        roomId: generatedCode,
+        role: 'debater_a',
+        topic: topicInput.trim(),
+        duration: selectedDuration,
+        turnDuration: finalTurn,
+      }
+    })
+  }
 
   return (
     <div className="flex-1 bg-neutral-950 border border-neutral-800 p-8
@@ -131,59 +139,72 @@ const CreatePanel = ({ username }) => {
 
       {/* Duration picker */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
-  Debate Duration
-</label>
-<div className="flex gap-2 mb-2">
-  {DURATIONS.map(opt => (
-    <button
-      key={opt.value}
-      onClick={() => { setSelectedDuration(opt.value); setUseCustom(false) }}
-      className={`flex-1 py-2 border font-mono-plex text-[0.65rem] tracking-wider
-                  transition-all cursor-pointer
-                  ${!useCustom && selectedDuration === opt.value
-                    ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10'
-                    : 'border-neutral-800 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-500'}`}
-    >
-      {opt.label}
-    </button>
-  ))}
-  <button
-    onClick={() => setUseCustom(true)}
-    className={`flex-1 py-2 border font-mono-plex text-[0.65rem] tracking-wider
-                transition-all cursor-pointer
-                ${useCustom
-                  ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10'
-                  : 'border-neutral-800 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-500'}`}
-  >
-    CUSTOM
-  </button>
-</div>
+        Debate Duration
+      </label>
+      <div className="flex gap-2 mb-5">
+        {DURATIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setSelectedDuration(opt.value)}
+            className={`flex-1 py-2 border font-mono-plex text-[0.65rem] tracking-wider
+                        transition-all cursor-pointer
+                        ${selectedDuration === opt.value
+                          ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10'
+                          : 'border-neutral-800 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-500'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
-{/* Custom input — slides in when CUSTOM is selected */}
-{useCustom && (
-  <div className="flex items-center gap-3 mb-5 border border-yellow-500/20
-                  bg-yellow-400/5 px-4 py-2.5 animate-fade-up">
-    <input
-      type="number"
-      min={1}
-      max={120}
-      value={customMinutes}
-      onChange={e => setCustomMinutes(e.target.value)}
-      placeholder="30"
-      className="w-16 bg-transparent outline-none text-yellow-400 font-cinzel
-                 text-lg text-center caret-yellow-400 placeholder-neutral-700
-                 [appearance:textfield]"
-    />
-    <span className="text-[0.65rem] tracking-widest text-neutral-600">MINUTES</span>
-    {customMinutes && (
-      <span className="ml-auto text-[0.6rem] text-neutral-600">
-        = {Math.floor(customMinutes / 60) > 0 ? `${Math.floor(customMinutes / 60)}h ` : ''}
-        {customMinutes % 60 > 0 ? `${customMinutes % 60}m` : ''}
-      </span>
-    )}
-  </div>
-)}
-{!useCustom && <div className="mb-5" />}
+      {/* Turn duration picker */}
+      <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
+        Time Per Argument
+      </label>
+      <div className="flex gap-2 mb-2">
+        {TURN_DURATIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => { setSelectedTurnDuration(opt.value); setUseCustomTurn(false) }}
+            className={`flex-1 py-2 border font-mono-plex text-[0.65rem] tracking-wider
+                        transition-all cursor-pointer
+                        ${!useCustomTurn && selectedTurnDuration === opt.value
+                          ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10'
+                          : 'border-neutral-800 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-500'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+        <button
+          onClick={() => setUseCustomTurn(true)}
+          className={`flex-1 py-2 border font-mono-plex text-[0.65rem] tracking-wider
+                      transition-all cursor-pointer
+                      ${useCustomTurn
+                        ? 'border-yellow-400 text-yellow-400 bg-yellow-400/10'
+                        : 'border-neutral-800 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-500'}`}
+        >
+          CUSTOM
+        </button>
+      </div>
+
+      {useCustomTurn && (
+        <div className="flex items-center gap-3 mb-5 border border-yellow-500/20
+                        bg-yellow-400/5 px-4 py-2.5 animate-fade-up">
+          <input
+            type="number"
+            min={10}
+            max={300}
+            value={customTurnSeconds}
+            onChange={e => setCustomTurnSeconds(e.target.value)}
+            placeholder="60"
+            className="w-16 bg-transparent outline-none text-yellow-400 font-cinzel
+                       text-lg text-center caret-yellow-400 placeholder-neutral-700
+                       [appearance:textfield]"
+          />
+          <span className="text-[0.65rem] tracking-widest text-neutral-600">SECONDS</span>
+        </div>
+      )}
+      {!useCustomTurn && <div className="mb-5" />}
 
       <button
         onClick={handleGenerate}
@@ -246,10 +267,16 @@ const JoinPanel = ({ username }) => {
       setError('Room code must be 6 characters')
       return
     }
-    setUsername(username)
-    setRoomId(code.toUpperCase())
-    setRole(selectedRole)
-    navigate(`/debate/${code.toUpperCase()}`)
+    navigate(`/debate/${code.toUpperCase()}`, {
+      state: {
+        username,
+        roomId: code.toUpperCase(),
+        role: selectedRole,
+        topic: '',       // will be synced from server via room_state
+        duration: 0,     // will be synced from server
+        turnDuration: 0, // will be synced from server
+      }
+    })
   }
 
   return (

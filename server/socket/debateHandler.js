@@ -53,8 +53,18 @@ const startDebateTimer = (io, room) => {
 }
 
 const startTurnTimer = (io, room) => {
+  console.log('startTurnTimer called, room.turnDuration:', room.turnDuration) // ← add this
+
   clearInterval(room.turnTimer)
-  room.turnTimeLeft = TURN_DURATION
+
+  // 0 = infinite turn — no countdown, turn only ends on submit or interject
+  if (room.turnDuration === 0) {
+    room.turnTimeLeft = -1
+    io.to(room.roomId).emit('turn_tick', { turnTimeLeft: -1 })
+    return
+  }
+
+  room.turnTimeLeft = room.turnDuration
   room.turnTimer = setInterval(() => {
     room.turnTimeLeft -= 1
     io.to(room.roomId).emit('turn_tick', { turnTimeLeft: room.turnTimeLeft })
@@ -89,13 +99,14 @@ const endDebate = (io, room) => {
 export const registerDebateHandlers = (io, socket) => {
 
   // ── join_debate ─────────────────────────────────────────────────────────────
-  socket.on('join_debate', ({ roomId, username, role, topic, duration }) => {
+  socket.on('join_debate', ({ roomId, username, role, topic, duration, turnDuration }) => {
     socket.join(roomId)
     let room = getRoom(roomId)
 
     // Room creator (debater_a) always initializes the room
     if (!room && role === 'debater_a') {
-      room = createRoom(roomId, { topic, duration })
+      room = createRoom(roomId, { topic, duration, turnDuration })
+      console.log('Room created with turnDuration:', room.turnDuration)
     }
 
     if (!room) {
@@ -110,15 +121,11 @@ export const registerDebateHandlers = (io, socket) => {
       room.spectators.push(socket.id)
     }
 
-    console.log(`Room ${roomId} players:`, {
-    debater_a: room.players.debater_a?.username,
-    debater_b: room.players.debater_b?.username,
-    })
-
     // Send current state to joining player
     socket.emit('room_state', {
       topic: room.topic,
       duration: room.duration,
+      turnDuration: room.turnDuration,
       debateTimeLeft: room.debateTimeLeft,
       currentTurn: room.currentTurn,
       scores: room.scores,
@@ -144,6 +151,7 @@ export const registerDebateHandlers = (io, socket) => {
         },
         topic: room.topic,
         duration: room.duration,
+        turnDuration: room.turnDuration,
         currentTurn: room.currentTurn,
       })
       startDebateTimer(io, room)

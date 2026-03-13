@@ -6,13 +6,14 @@
 
 const rooms = new Map()
 
-export const createRoom = (roomId, { topic, duration }) => {
+export const createRoom = (roomId, { topic, duration, turnDuration = 30 }) => {
   rooms.set(roomId, {
     roomId,
     topic,
-    duration,          // total debate seconds
+    duration,
+    turnDuration,      // per-turn seconds, 0 = infinite
     debateTimeLeft: duration,
-    turnTimeLeft: 30,
+    turnTimeLeft: turnDuration || 30,
     currentTurn: 'debater_a',
     status: 'waiting', // 'waiting' | 'active' | 'finished'
     players: {

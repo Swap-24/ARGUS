@@ -4,8 +4,8 @@
  * This component is purely reactive — it listens and renders.
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useDebate } from '../../context/DebateContext'
 import { useSocket } from '../../hooks/useSocket'
 import ScoreBar from './ScoreBar'
@@ -22,26 +22,39 @@ const formatTime = (secs) => {
 
 const DebateArena = () => {
   const navigate = useNavigate()
-  const { username, role, topic, roomId, duration } = useDebate()
+  const location = useLocation()
+  const nav = location.state || {}
+
+  // Read from navigation state (reliable) with context as fallback
+  const { username, role, topic, roomId, duration, turnDuration } = useDebate()
+  const effectiveUsername    = nav.username    || username
+  const effectiveRole        = nav.role        || role
+  const effectiveTopic       = nav.topic       || topic
+  const effectiveRoomId      = nav.roomId      || roomId
+  const effectiveDuration    = nav.duration    || duration
+  const effectiveTurnDuration = nav.turnDuration !== undefined ? nav.turnDuration : turnDuration
 
   // Redirect if entered directly without going through lobby
   useEffect(() => {
-    if (!username || !role) navigate('/')
-  }, [username, role, navigate])
+    if (!effectiveUsername || !effectiveRole) navigate('/')
+  }, [effectiveUsername, effectiveRole, navigate])
 
   // ── Game state — all driven by server events ──────────────────────────────
   const [status, setStatus] = useState('waiting') // 'waiting' | 'active' | 'finished'
   const [args, setArgs] = useState([])
   const [inputText, setInputText] = useState('')
   const [currentTurn, setCurrentTurn] = useState('debater_a')
-  const [turnTimeLeft, setTurnTimeLeft] = useState(30)
-  const [debateTimeLeft, setDebateTimeLeft] = useState(duration || 300)
+  // localTurnDuration starts from context (creator) but gets synced from
+  // server for Debater B who never set it via the lobby
+  const [localTurnDuration, setLocalTurnDuration] = useState(effectiveTurnDuration === 0 ? 0 : (effectiveTurnDuration || 30))
+  const [turnTimeLeft, setTurnTimeLeft] = useState(effectiveTurnDuration === 0 ? -1 : (effectiveTurnDuration || 30))
+  const [debateTimeLeft, setDebateTimeLeft] = useState(effectiveDuration || 300)
   const [scoreA, setScoreA] = useState(0)
   const [scoreB, setScoreB] = useState(0)
   const [chargeA, setChargeA] = useState(0)
   const [chargeB, setChargeB] = useState(0)
-  const [nameA, setNameA] = useState(role === 'debater_a' ? username : '...')
-  const [nameB, setNameB] = useState(role === 'debater_b' ? username : '...')
+  const [nameA, setNameA] = useState(effectiveRole === 'debater_a' ? effectiveUsername : '...')
+  const [nameB, setNameB] = useState(effectiveRole === 'debater_b' ? effectiveUsername : '...')
   const [lastFallacy, setLastFallacy] = useState(null)
   const [lastFallacySpeaker, setLastFallacySpeaker] = useState(null)
   const [interjected, setInterjected] = useState(false)
@@ -49,8 +62,8 @@ const DebateArena = () => {
   const [finalResult, setFinalResult] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const isMyTurn = role === currentTurn
-  const myCharge = role === 'debater_a' ? chargeA : chargeB
+  const isMyTurn = effectiveRole === currentTurn
+  const myCharge = effectiveRole === 'debater_a' ? chargeA : chargeB
   const isCharged = myCharge >= 100
 
   // ── Socket event handlers ─────────────────────────────────────────────────
@@ -58,6 +71,10 @@ const DebateArena = () => {
     // Sync state when joining an in-progress room
     setDebateTimeLeft(data.debateTimeLeft)
     setCurrentTurn(data.currentTurn)
+    if (data.turnDuration !== undefined) {
+      setLocalTurnDuration(data.turnDuration)
+      setTurnTimeLeft(data.turnDuration === 0 ? -1 : data.turnDuration)
+    }
     setScoreA(data.scores.debater_a)
     setScoreB(data.scores.debater_b)
     setChargeA(data.charges.debater_a)
@@ -73,6 +90,10 @@ const DebateArena = () => {
     setNameA(data.players.debater_a)
     setNameB(data.players.debater_b)
     setCurrentTurn(data.currentTurn)
+    if (data.turnDuration !== undefined) {
+      setLocalTurnDuration(data.turnDuration)
+      setTurnTimeLeft(data.turnDuration === 0 ? -1 : data.turnDuration)
+    }
   }, [])
 
   const handlePlayerJoined = useCallback(({ username: name, role: r }) => {
@@ -96,9 +117,13 @@ const DebateArena = () => {
     }
   }, [])
 
+  const localTurnDurationRef = useRef(localTurnDuration)
+  useEffect(() => { localTurnDurationRef.current = localTurnDuration }, [localTurnDuration])
+
   const handleTurnChanged = useCallback(({ currentTurn: turn }) => {
     setCurrentTurn(turn)
-    setTurnTimeLeft(30)
+    const td = localTurnDurationRef.current
+    setTurnTimeLeft(td === 0 ? -1 : td)
   }, [])
 
   const handleTurnTick = useCallback(({ turnTimeLeft: t }) => {
@@ -127,7 +152,7 @@ const DebateArena = () => {
 
   // ── Register socket + join room ───────────────────────────────────────────
   const { emit } = useSocket(
-    { roomId, username, role, topic, duration },
+    { roomId: effectiveRoomId, username: effectiveUsername, role: effectiveRole, topic: effectiveTopic, duration: effectiveDuration, turnDuration: localTurnDuration },
     {
       room_state:            handleRoomState,
       debate_start:          handleDebateStart,
@@ -146,12 +171,12 @@ const DebateArena = () => {
   const handleSubmit = () => {
     if (!inputText.trim() || !isMyTurn || isSubmitting || status !== 'active') return
     setIsSubmitting(true)
-    emit('submit_argument', { roomId, text: inputText.trim(), speaker: role })
+    emit('submit_argument', { roomId: effectiveRoomId, text: inputText.trim(), speaker: effectiveRole })
   }
 
   const handleInterject = () => {
     if (!isCharged || isMyTurn || status !== 'active') return
-    emit('interject', { roomId, role })
+    emit('interject', { roomId: effectiveRoomId, role: effectiveRole })
   }
 
   // ── Finished screen ───────────────────────────────────────────────────────
@@ -211,9 +236,9 @@ const DebateArena = () => {
         </h1>
         <div className="relative z-10 flex items-center gap-3 border border-yellow-500/20
                         bg-yellow-400/5 px-6 py-3">
-          <span className="font-cinzel text-2xl text-yellow-400 tracking-[0.3em]">{roomId}</span>
+          <span className="font-cinzel text-2xl text-yellow-400 tracking-[0.3em]">{effectiveRoomId}</span>
           <button
-            onClick={() => navigator.clipboard.writeText(roomId)}
+            onClick={() => navigator.clipboard.writeText(effectiveRoomId)}
             className="text-[0.6rem] text-neutral-600 border border-neutral-800 px-2 py-1
                        hover:border-yellow-500/30 hover:text-yellow-500 transition-all cursor-pointer font-mono-plex"
           >
@@ -261,7 +286,7 @@ const DebateArena = () => {
           <span className="font-cinzel text-yellow-400 text-sm tracking-widest">ARGUS</span>
           <span className="text-neutral-700 text-xs">·</span>
           <span className="text-neutral-600 text-[0.65rem] tracking-wider">
-            ROOM <span className="text-neutral-400">{roomId}</span>
+            ROOM <span className="text-neutral-400">{effectiveRoomId}</span>
           </span>
         </div>
         <div className={`font-cinzel text-lg tracking-widest transition-colors
@@ -273,7 +298,7 @@ const DebateArena = () => {
       {/* Topic bar */}
       <div className="px-6 py-2 bg-[#0a0a0a] border-b border-neutral-800 shrink-0">
         <p className="text-[0.7rem] text-neutral-500 text-center truncate italic">
-          "{topic || 'No topic set'}"
+          "{effectiveTopic || 'No topic set'}"
         </p>
       </div>
 
@@ -294,15 +319,15 @@ const DebateArena = () => {
             charge={chargeA}
             onInterject={handleInterject}
             isMyTurn={isMyTurn}
-            isCharged={role === 'debater_a' && isCharged}
+            isCharged={effectiveRole === 'debater_a' && isCharged}
             side="debater_a"
           />
-          <TurnTimer timeLeft={turnTimeLeft} isMyTurn={isMyTurn} />
+          <TurnTimer timeLeft={turnTimeLeft} isMyTurn={isMyTurn} turnDuration={localTurnDuration} />
           <InterjectionCharge
             charge={chargeB}
             onInterject={handleInterject}
             isMyTurn={isMyTurn}
-            isCharged={role === 'debater_b' && isCharged}
+            isCharged={effectiveRole === 'debater_b' && isCharged}
             side="debater_b"
           />
         </div>
