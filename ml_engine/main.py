@@ -1,9 +1,41 @@
+"""
+main.py
+FastAPI entry point for the Argus ML engine.
+Models are preloaded on startup so the first request isn't slow.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
+from contextlib import asynccontextmanager
+from routers.analyze import router as analyze_router
 
-app = FastAPI()
+# Preload all models on startup
+from models.sentiment import get_sentiment_pipeline
+from models.relevance import get_embedding_model
+from models.argument_scorer import get_zero_shot_pipeline
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load all models into memory before accepting requests."""
+    print("Loading ML models...")
+    get_sentiment_pipeline()
+    print("  ✓ Sentiment model (DistilBERT)")
+    get_embedding_model()
+    print("  ✓ Relevance model (Sentence-BERT)")
+    get_zero_shot_pipeline()
+    print("  ✓ Argument scorer (BART)")
+    print("All models loaded. Ready.")
+    yield
+    # Cleanup on shutdown (nothing needed for now)
+
+
+app = FastAPI(
+    title="Argus ML Engine",
+    description="Real-time debate argument scoring API",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,33 +44,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Schemas ---
-class ArgumentRequest(BaseModel):
-    argument_text: str
-    topic: str
-    debate_history: List[str] = []
-    speaker: str
+app.include_router(analyze_router)
 
-class ScoreResponse(BaseModel):
-    scores: dict
-    final_score: int
-    fallacies_detected: List[str]
-    feedback: str
 
 @app.get("/")
 def root():
     return {"status": "Argus ML engine running"}
-
-@app.post("/analyze", response_model=ScoreResponse)
-def analyze_argument(req: ArgumentRequest):
-    return ScoreResponse(
-        scores={
-            "sentiment": 0.75,
-            "argument_strength": 0.70,
-            "relevance": 0.85,
-            "fallacy_penalty": 0.0
-        },
-        final_score=75,
-        fallacies_detected=[],
-        feedback="Solid argument. Consider adding supporting evidence."
-    )
