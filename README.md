@@ -26,7 +26,7 @@
 
 ## What is Argus?
 
-Argus is a real-time AI-powered debate platform where two players go head-to-head on a topic of their choosing. Every argument is scored live by a multi-model ML pipeline — judging logic, relevance, sentiment, and rhetorical fallacies. The better you argue, the more you score. Argue well enough and you charge up your **INTERJECT** ability to cut your opponent's turn short.
+Argus is a real-time AI-powered debate platform where two players go head-to-head on a topic of their choosing. Every argument is scored live by a multi-model Machine Learning pipeline — judging logic, relevance, sentiment, and rhetorical fallacies. The better you argue, the more you score. Argue well enough and you charge up your **INTERJECT** ability to cut your opponent's turn short.
 
 No judges. No bias. Just your words against theirs.
 
