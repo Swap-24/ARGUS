@@ -6,7 +6,7 @@ High similarity = the argument is on-topic.
 """
 
 from sentence_transformers import SentenceTransformer, util
-import torch
+
 
 _model = None
 
@@ -30,4 +30,4 @@ def score_relevance(argument: str, topic: str) -> float:
     normalized = (similarity + 1) / 2
 
     # Floor at 0.2 so no argument is completely penalized for topic drift
-    return round(max(0.2, normalized), 4)
+    return round(max(0.1, normalized), 4)

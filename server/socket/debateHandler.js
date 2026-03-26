@@ -166,9 +166,11 @@ export const registerDebateHandlers = (io, socket) => {
     if (room.currentTurn !== speaker) return
 
     clearInterval(room.turnTimer)
+    clearInterval(room.debateTimer)
 
     const history = room.args.map(a => a.text)
     const result = await scoreArgument(text, room.topic, history)
+    console.log('ML RESULT:', JSON.stringify(result, null, 2)) 
 
     const newArg = {
       text,
@@ -191,6 +193,8 @@ export const registerDebateHandlers = (io, socket) => {
       scores: room.scores,
       charges: room.charges,
     })
+
+    startDebateTimer(io, room)
 
     setTimeout(() => advanceTurn(io, room), 600)
   })

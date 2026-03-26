@@ -11,9 +11,15 @@ from google import genai
 import os
 import json
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("API_KEY")
+
 
 # ✅ Use env variable instead of hardcoding
-client = genai.Client(api_key="AIzaSyChUVZIVc7RxTf8LvLn3wNHEnAZtyAM2dE")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 _zero_shot_pipe = None
 
@@ -98,13 +104,20 @@ Important:
 - A strong argument can still have minor flaws — IGNORE those.
 - Only return fallacies if they meaningfully impact quality.
 
-Possible fallacies:
-- ad_hominem
-- straw_man
-- appeal_to_authority
-- false_dichotomy
-- slippery_slope
-- hasty_generalization
+Fallacy definitions (be strict):
+- ad_hominem: ONLY when the argument attacks a person's character, identity, or
+  motives directly to dismiss them. Criticizing a methodology, framework, or
+  tool is NOT ad hominem, even if it mentions the author.
+- straw_man: misrepresenting an opponent's actual position
+- appeal_to_authority: citing authority as sole proof with no supporting logic
+- false_dichotomy: presenting only two options when more exist
+- slippery_slope: assuming one event inevitably causes an extreme outcome
+- hasty_generalization: broad conclusion from insufficient examples
+
+When uncertain whether a fallacy applies, DO NOT include it.
+Err heavily on the side of NOT flagging.
+- "author desires" or similar phrasing critiquing a model/framework is NOT
+  ad hominem unless it explicitly attacks the person's character or integrity.
 
 Return ONLY JSON:
 {{

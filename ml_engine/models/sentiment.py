@@ -1,8 +1,12 @@
 from google import genai
 import json
 import re
+from dotenv import load_dotenv
+import os
 
-client = genai.Client(api_key="AIzaSyChUVZIVc7RxTf8LvLn3wNHEnAZtyAM2dE")
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+client = genai.Client(api_key=API_KEY)
 
 
 def extract_json(text: str) -> str:
