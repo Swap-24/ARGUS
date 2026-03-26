@@ -206,10 +206,7 @@ export const registerDebateHandlers = (io, socket) => {
       scores: room.scores,
       charges: room.charges,
     })
-
-    startDebateTimer(io, room)
-
-    setTimeout(() => advanceTurn(io, room), 600)
+    advanceTurn(io, room)
   })
 
   // ── interject ───────────────────────────────────────────────────────────────
