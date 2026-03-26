@@ -1,19 +1,15 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { DebateProvider } from './context/DebateContext'
-import Home from './pages/Home'
-import Debate from './pages/Debate'
+import { AuthProvider }   from './context/AuthContext'
+import AppRoutes          from './router/Routes'
 import './App.css'
 
 function App() {
   return (
-    <DebateProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/debate/:roomId" element={<Debate />} />
-        </Routes>
-      </BrowserRouter>
-    </DebateProvider>
+    <AuthProvider>
+      <DebateProvider>
+        <AppRoutes />
+      </DebateProvider>
+    </AuthProvider>
   )
 }
 

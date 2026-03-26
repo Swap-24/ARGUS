@@ -28,12 +28,12 @@ const DebateArena = () => {
 
   // Read from navigation state (reliable) with context as fallback
   const { username, role, topic, roomId, duration, turnDuration } = useDebate()
-  const effectiveUsername     = nav.username    || username
-  const effectiveRole         = nav.role        || role
-  const effectiveTopic        = nav.topic       || topic
+  const effectiveUsername    = nav.username    || username
+  const effectiveRole        = nav.role        || role
+  const effectiveTopic       = nav.topic       || topic
   // Prefer URL param so the room ID is always correct even on refresh
-  const effectiveRoomId       = roomIdParam     || nav.roomId || roomId
-  const effectiveDuration     = nav.duration    || duration
+  const effectiveRoomId      = roomIdParam     || nav.roomId || roomId
+  const effectiveDuration    = nav.duration    || duration
   const effectiveTurnDuration = nav.turnDuration !== undefined ? nav.turnDuration : turnDuration
 
   // Redirect to home (not login) only if truly missing — use a small delay
@@ -283,7 +283,11 @@ const DebateArena = () => {
           Share the room code with your opponent
         </p>
         <div className="relative z-10 text-[0.65rem] text-neutral-700 max-w-xs text-center italic">
+<<<<<<< HEAD
           "{currentTopic || 'No topic set'}"
+=======
+          "{currentTopic}"
+>>>>>>> 2fee57b (Auth added)
         </div>
       </div>
     )
