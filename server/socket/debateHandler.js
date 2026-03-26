@@ -53,7 +53,7 @@ const startDebateTimer = (io, room) => {
 }
 
 const startTurnTimer = (io, room) => {
-  console.log('startTurnTimer called, room.turnDuration:', room.turnDuration) // ← add this
+  console.log('startTurnTimer called, room.turnDuration:', room.turnDuration)
 
   clearInterval(room.turnTimer)
 
@@ -73,8 +73,17 @@ const startTurnTimer = (io, room) => {
 }
 
 const advanceTurn = (io, room) => {
-  room.currentTurn = room.currentTurn === 'debater_a' ? 'debater_b' : 'debater_a'
-  io.to(room.roomId).emit('turn_changed', { currentTurn: room.currentTurn })
+  clearInterval(room.turnTimer) // ✅ CRITICAL FIX
+
+  room.currentTurn =
+    room.currentTurn === 'debater_a'
+      ? 'debater_b'
+      : 'debater_a'
+
+  io.to(room.roomId).emit('turn_changed', {
+    currentTurn: room.currentTurn
+  })
+
   startTurnTimer(io, room)
 }
 
@@ -193,10 +202,7 @@ export const registerDebateHandlers = (io, socket) => {
       scores: room.scores,
       charges: room.charges,
     })
-
-    startDebateTimer(io, room)
-
-    setTimeout(() => advanceTurn(io, room), 600)
+    advanceTurn(io, room)
   })
 
   // ── interject ───────────────────────────────────────────────────────────────
@@ -241,5 +247,29 @@ export const registerDebateHandlers = (io, socket) => {
         deleteRoom(room.roomId)
       }
     }, 30000)
+  })
+
+  // ── admit_defeat ────────────────────────────────────────────────────────────
+  socket.on('admit_defeat', ({ roomId, role, username }) => {
+    const room = getRoom(roomId)
+    if (!room || room.status !== 'active') return
+
+    clearInterval(room.debateTimer)
+    clearInterval(room.turnTimer)
+
+    room.status = 'finished'
+
+    const winner = role === 'debater_a'
+      ? room.players.debater_b?.username
+      : room.players.debater_a?.username
+
+    io.to(roomId).emit('debate_ended', {
+      scores: room.scores,
+      winner,
+      args: room.args,
+      reason: `${username} admitted defeat`,
+    })
+
+    setTimeout(() => deleteRoom(roomId), 5000)
   })
 }

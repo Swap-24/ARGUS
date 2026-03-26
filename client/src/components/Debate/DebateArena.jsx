@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { useDebate } from '../../context/DebateContext'
 import { useSocket } from '../../hooks/useSocket'
 import ScoreBar from './ScoreBar'
@@ -23,20 +23,28 @@ const formatTime = (secs) => {
 const DebateArena = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { roomId: roomIdParam } = useParams()
   const nav = location.state || {}
 
   // Read from navigation state (reliable) with context as fallback
   const { username, role, topic, roomId, duration, turnDuration } = useDebate()
-  const effectiveUsername    = nav.username    || username
-  const effectiveRole        = nav.role        || role
-  const effectiveTopic       = nav.topic       || topic
-  const effectiveRoomId      = nav.roomId      || roomId
-  const effectiveDuration    = nav.duration    || duration
+  const effectiveUsername     = nav.username    || username
+  const effectiveRole         = nav.role        || role
+  const effectiveTopic        = nav.topic       || topic
+  // Prefer URL param so the room ID is always correct even on refresh
+  const effectiveRoomId       = roomIdParam     || nav.roomId || roomId
+  const effectiveDuration     = nav.duration    || duration
   const effectiveTurnDuration = nav.turnDuration !== undefined ? nav.turnDuration : turnDuration
 
-  // Redirect if entered directly without going through lobby
+  // Redirect to home (not login) only if truly missing — use a small delay
+  // so navigation state has time to be read on first render.
   useEffect(() => {
-    if (!effectiveUsername || !effectiveRole) navigate('/')
+    const timer = setTimeout(() => {
+      if (!effectiveUsername || !effectiveRole) {
+        navigate('/home')
+      }
+    }, 100)
+    return () => clearTimeout(timer)
   }, [effectiveUsername, effectiveRole, navigate])
 
   // ── Game state — all driven by server events ──────────────────────────────
@@ -61,7 +69,8 @@ const DebateArena = () => {
   const [disconnectMsg, setDisconnectMsg] = useState(null)
   const [finalResult, setFinalResult] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [localTopic,setLocalTopic] = useState(effectiveTopic || "")
+  const [currentTopic, setCurrentTopic] = useState(effectiveTopic || '')
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const isMyTurn = effectiveRole === currentTurn
   const myCharge = effectiveRole === 'debater_a' ? chargeA : chargeB
@@ -69,12 +78,12 @@ const DebateArena = () => {
 
   // ── Socket event handlers ─────────────────────────────────────────────────
   const handleRoomState = useCallback((data) => {
-    if(data.topic){
-      setLocalTopic(data.topic)
-    }
     // Sync state when joining an in-progress room
     setDebateTimeLeft(data.debateTimeLeft)
     setCurrentTurn(data.currentTurn)
+    if (data.topic) {
+      setCurrentTopic(data.topic)
+    }
     if (data.turnDuration !== undefined) {
       setLocalTurnDuration(data.turnDuration)
       setTurnTimeLeft(data.turnDuration === 0 ? -1 : data.turnDuration)
@@ -91,12 +100,12 @@ const DebateArena = () => {
 
   const handleDebateStart = useCallback((data) => {
     setStatus('active')
+    if (data.topic) {
+      setCurrentTopic(data.topic)
+    }
     setNameA(data.players.debater_a)
     setNameB(data.players.debater_b)
     setCurrentTurn(data.currentTurn)
-    if(data.topic){
-      setLocalTopic(data.topic)
-    }
     if (data.turnDuration !== undefined) {
       setLocalTurnDuration(data.turnDuration)
       setTurnTimeLeft(data.turnDuration === 0 ? -1 : data.turnDuration)
@@ -186,6 +195,24 @@ const DebateArena = () => {
     emit('interject', { roomId: effectiveRoomId, role: effectiveRole })
   }
 
+  const handleAdmitDefeat = () => {
+    if (status !== 'active') return
+    setShowConfirm(true)
+  }
+
+  const confirmDefeat = () => {
+    setShowConfirm(false)
+    emit('admit_defeat', {
+      roomId: effectiveRoomId,
+      role: effectiveRole,
+      username: effectiveUsername
+    })
+  }
+
+  const cancelDefeat = () => {
+    setShowConfirm(false)
+  }
+
   // ── Finished screen ───────────────────────────────────────────────────────
   if (status === 'finished' && finalResult) {
     return (
@@ -217,7 +244,7 @@ const DebateArena = () => {
           </div>
         </div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/home')}
           className="relative z-10 mt-4 px-6 py-2.5 border border-yellow-500/30
                      text-yellow-400 font-cinzel text-xs tracking-widest
                      hover:bg-yellow-400 hover:text-black transition-all cursor-pointer"
@@ -256,7 +283,7 @@ const DebateArena = () => {
           Share the room code with your opponent
         </p>
         <div className="relative z-10 text-[0.65rem] text-neutral-700 max-w-xs text-center italic">
-          "{localTopic || 'No topic set'}"
+          "{currentTopic || 'No topic set'}"
         </div>
       </div>
     )
@@ -265,6 +292,34 @@ const DebateArena = () => {
   // ── Main arena ────────────────────────────────────────────────────────────
   return (
     <div className="h-screen bg-[#080808] font-mono-plex flex flex-col overflow-hidden">
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="border border-red-500/30 bg-[#0a0a0a] px-8 py-6 text-center shadow-lg">
+            <p className="text-red-400 font-cinzel tracking-widest mb-4">
+              ADMIT DEFEAT?
+            </p>
+            <p className="text-neutral-500 text-sm mb-6">
+              This will instantly end the debate.
+            </p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={confirmDefeat}
+                className="px-5 py-2 border border-red-500 text-red-400
+                           hover:bg-red-500 hover:text-black transition-all"
+              >
+                YES
+              </button>
+              <button
+                onClick={cancelDefeat}
+                className="px-5 py-2 border border-neutral-700 text-neutral-400
+                           hover:border-white hover:text-white transition-all"
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <FallacyBadge fallacy={lastFallacy} speaker={lastFallacySpeaker} />
 
@@ -305,7 +360,7 @@ const DebateArena = () => {
       {/* Topic bar */}
       <div className="px-6 py-2 bg-[#0a0a0a] border-b border-neutral-800 shrink-0">
         <p className="text-[0.7rem] text-neutral-500 text-center truncate italic">
-          "{localTopic || 'No topic set'}"
+          "{currentTopic || 'No topic set'}"
         </p>
       </div>
 
@@ -337,6 +392,17 @@ const DebateArena = () => {
             isCharged={effectiveRole === 'debater_b' && isCharged}
             side="debater_b"
           />
+        </div>
+
+        <div className='flex justify-center items-center mb-3 w-full'>
+          <button
+            onClick={handleAdmitDefeat}
+            className="px-4 py-2 text-[0.65rem] tracking-widest font-cinzel
+                       border border-red-500/30 text-red-400
+                       hover:bg-red-500 hover:text-black transition-all"
+          >
+            ADMIT DEFEAT
+          </button>
         </div>
 
         <div className={`flex gap-2 items-end border transition-all

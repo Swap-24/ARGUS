@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDebate } from '../context/DebateContext'
+import { useAuth }   from '../context/AuthContext'
 
 const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
@@ -12,13 +13,13 @@ const DURATIONS = [
 ]
 
 const TURN_DURATIONS = [
-  { label: '30 SEC',  value: 30 },
-  { label: '60 SEC',  value: 60 },
-  { label: '90 SEC',  value: 90 },
-  { label: '∞',       value: 0  },  // 0 = infinite
+  { label: '30 SEC', value: 30 },
+  { label: '60 SEC', value: 60 },
+  { label: '90 SEC', value: 90 },
+  { label: '∞',      value: 0  },
 ]
 
-// ─── Username Gate ────────────────────────────────────────────────────────────
+// ─── Username Gate (only shown if somehow not logged in) ──────────────────────
 const UsernameGate = ({ onConfirm }) => {
   const [input, setInput] = useState('')
   const [shake, setShake] = useState(false)
@@ -67,14 +68,13 @@ const UsernameGate = ({ onConfirm }) => {
 
 // ─── Create Panel ─────────────────────────────────────────────────────────────
 const CreatePanel = ({ username }) => {
-  const [topicInput, setTopicInput] = useState('')
+  const [topicInput, setTopicInput]             = useState('')
   const [selectedDuration, setSelectedDuration] = useState(300)
   const [selectedTurnDuration, setSelectedTurnDuration] = useState(30)
   const [customTurnSeconds, setCustomTurnSeconds] = useState('')
-  const [useCustomTurn, setUseCustomTurn] = useState(false)
-  const [generatedCode, setGeneratedCode] = useState('')
-  const [copied, setCopied] = useState(false)
-  const { setRoomId, setRole, setTopic, setUsername, setDuration, setTurnDuration } = useDebate()
+  const [useCustomTurn, setUseCustomTurn]         = useState(false)
+  const [generatedCode, setGeneratedCode]         = useState('')
+  const [copied, setCopied]                       = useState(false)
   const navigate = useNavigate()
 
   const handleGenerate = () => {
@@ -94,7 +94,6 @@ const CreatePanel = ({ username }) => {
     const finalTurn = useCustomTurn
       ? Math.max(10, Math.min(300, parseInt(customTurnSeconds) || 30))
       : selectedTurnDuration
-    // Pass everything via navigation state to avoid async context timing issues
     navigate(`/debate/${generatedCode}`, {
       state: {
         username,
@@ -110,7 +109,6 @@ const CreatePanel = ({ username }) => {
   return (
     <div className="flex-1 bg-neutral-950 border border-neutral-800 p-8
                     hover:bg-[#0d0d0d] hover:border-yellow-500/30 transition-all">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-7 pb-4 border-b border-yellow-500/20">
         <span className="text-lg">⚔</span>
         <span className="font-cinzel text-[0.8rem] tracking-[0.25em] text-yellow-400">
@@ -118,7 +116,6 @@ const CreatePanel = ({ username }) => {
         </span>
       </div>
 
-      {/* Topic */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
         Debate Topic
       </label>
@@ -137,7 +134,6 @@ const CreatePanel = ({ username }) => {
         {topicInput.length}/200
       </div>
 
-      {/* Duration picker */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
         Debate Duration
       </label>
@@ -157,7 +153,6 @@ const CreatePanel = ({ username }) => {
         ))}
       </div>
 
-      {/* Turn duration picker */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
         Time Per Argument
       </label>
@@ -198,18 +193,16 @@ const CreatePanel = ({ username }) => {
             onChange={e => setCustomTurnSeconds(e.target.value)}
             placeholder="60"
             className="w-16 bg-transparent outline-none text-yellow-400 font-cinzel
-                       text-lg text-center caret-yellow-400 placeholder-neutral-700
-                       [appearance:textfield]"
+                       text-lg tracking-wider caret-yellow-400"
           />
-          <span className="text-[0.65rem] tracking-widest text-neutral-600">SECONDS</span>
+          <span className="text-[0.65rem] text-neutral-600 tracking-wider">SECONDS PER TURN</span>
         </div>
       )}
-      {!useCustomTurn && <div className="mb-5" />}
 
       <button
         onClick={handleGenerate}
         disabled={!topicInput.trim()}
-        className={`w-full py-3 border font-mono-plex text-[0.75rem] tracking-widest
+        className={`w-full py-3 mt-3 border font-mono-plex text-[0.75rem] tracking-widest
                     transition-all cursor-pointer
                     ${topicInput.trim()
                       ? 'border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black hover:shadow-[0_0_30px_#f5c84230]'
@@ -218,7 +211,6 @@ const CreatePanel = ({ username }) => {
         GENERATE ROOM CODE
       </button>
 
-      {/* Generated code */}
       {generatedCode && (
         <div className="mt-5 p-4 border border-yellow-500/25 bg-yellow-400/5 animate-fade-up">
           <div className="text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
@@ -256,10 +248,9 @@ const CreatePanel = ({ username }) => {
 
 // ─── Join Panel ───────────────────────────────────────────────────────────────
 const JoinPanel = ({ username }) => {
-  const [code, setCode] = useState('')
+  const [code, setCode]               = useState('')
   const [selectedRole, setSelectedRole] = useState('debater_b')
-  const [error, setError] = useState('')
-  const { setRoomId, setRole, setUsername } = useDebate()
+  const [error, setError]             = useState('')
   const navigate = useNavigate()
 
   const handleJoin = () => {
@@ -272,9 +263,9 @@ const JoinPanel = ({ username }) => {
         username,
         roomId: code.toUpperCase(),
         role: selectedRole,
-        topic: '',       // will be synced from server via room_state
-        duration: 0,     // will be synced from server
-        turnDuration: 0, // will be synced from server
+        topic: '',
+        duration: 0,
+        turnDuration: 0,
       }
     })
   }
@@ -282,7 +273,6 @@ const JoinPanel = ({ username }) => {
   return (
     <div className="flex-1 bg-neutral-950 border border-neutral-800 p-8
                     hover:bg-[#0d0d0d] hover:border-sky-500/25 transition-all">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-7 pb-4 border-b border-sky-500/20">
         <span className="text-lg">🛡</span>
         <span className="font-cinzel text-[0.8rem] tracking-[0.25em] text-sky-400">
@@ -290,7 +280,6 @@ const JoinPanel = ({ username }) => {
         </span>
       </div>
 
-      {/* Code input */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mb-2 uppercase">
         Room Code
       </label>
@@ -306,11 +295,8 @@ const JoinPanel = ({ username }) => {
         onChange={e => { setCode(e.target.value.toUpperCase()); setError('') }}
         onKeyDown={e => e.key === 'Enter' && handleJoin()}
       />
-      {error && (
-        <div className="text-[0.7rem] text-red-500 mt-2 tracking-wide">{error}</div>
-      )}
+      {error && <div className="text-[0.7rem] text-red-500 mt-2 tracking-wide">{error}</div>}
 
-      {/* Role selector */}
       <label className="block text-[0.6rem] tracking-[0.3em] text-neutral-600 mt-6 mb-2 uppercase">
         Join As
       </label>
@@ -350,26 +336,31 @@ const JoinPanel = ({ username }) => {
 
 // ─── Home Page ────────────────────────────────────────────────────────────────
 const Home = () => {
-  const [username, setUsername] = useState('')
-  const [confirmed, setConfirmed] = useState(false)
+  const { user, logout } = useAuth()
+  const [username, setUsername] = useState(user?.username || '')
+  const [confirmed, setConfirmed] = useState(!!user)
+
+  useEffect(() => {
+    if (user?.username) {
+      setUsername(user.username)
+      setConfirmed(true)
+    }
+  }, [user])
 
   return (
     <div className="min-h-screen bg-[#080808] font-mono-plex text-neutral-200
                     flex flex-col items-center relative overflow-hidden px-4 pb-16">
 
-      {/* Background grid */}
       <div className="fixed inset-0 opacity-40 pointer-events-none"
            style={{
              backgroundImage: 'linear-gradient(#1a1a1a 1px, transparent 1px), linear-gradient(90deg, #1a1a1a 1px, transparent 1px)',
              backgroundSize: '60px 60px'
            }} />
 
-      {/* Gold glow */}
       <div className="fixed -top-50 left-1/2 -translate-x-1/2 w-150 h-150
                       rounded-full pointer-events-none"
            style={{ background: 'radial-gradient(circle, #f5c84210 0%, transparent 70%)' }} />
 
-      {/* Header */}
       <header className="relative z-10 text-center mt-12 mb-12">
         <span className="block text-4xl mb-2 animate-pulse-eye">👁</span>
         <h1 className="font-cinzel font-black text-yellow-400 tracking-[0.3em] text-6xl leading-none"
@@ -381,15 +372,24 @@ const Home = () => {
         </p>
       </header>
 
-      {/* Main */}
       <main className="relative z-10 w-full max-w-3xl">
         {!confirmed ? (
           <UsernameGate onConfirm={name => { setUsername(name); setConfirmed(true) }} />
         ) : (
           <div className="animate-fade-up">
-            <p className="text-center text-[0.75rem] tracking-[0.15em] text-neutral-500 mb-8">
-              Welcome, <span className="text-yellow-400 font-medium">{username}</span>. Choose your path.
-            </p>
+            <div className="flex items-center justify-between mb-8">
+              <p className="text-[0.75rem] tracking-[0.15em] text-neutral-500">
+                Welcome, <span className="text-yellow-400 font-medium">{username}</span>. Choose your path.
+              </p>
+              <button
+                onClick={logout}
+                className="text-[0.6rem] tracking-widest text-neutral-700
+                           border border-neutral-800 px-3 py-1.5
+                           hover:border-red-500/40 hover:text-red-400 transition-all cursor-pointer"
+              >
+                LOGOUT
+              </button>
+            </div>
             <div className="flex items-stretch">
               <CreatePanel username={username} />
               <div className="flex flex-col items-center justify-center gap-3 px-5">
