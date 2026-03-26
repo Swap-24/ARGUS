@@ -69,8 +69,7 @@ const DebateArena = () => {
   const [disconnectMsg, setDisconnectMsg] = useState(null)
   const [finalResult, setFinalResult] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [currentTopic, setCurrentTopic] = useState(effectiveTopic || '')
-  const [showConfirm, setShowConfirm] = useState(false)
+  const [localTopic,setLocalTopic] = useState(effectiveTopic || "")
 
   const isMyTurn = effectiveRole === currentTurn
   const myCharge = effectiveRole === 'debater_a' ? chargeA : chargeB
@@ -78,6 +77,9 @@ const DebateArena = () => {
 
   // ── Socket event handlers ─────────────────────────────────────────────────
   const handleRoomState = useCallback((data) => {
+    if(data.topic){
+      setLocalTopic(data.topic)
+    }
     // Sync state when joining an in-progress room
     setDebateTimeLeft(data.debateTimeLeft)
     setCurrentTurn(data.currentTurn)
@@ -106,6 +108,9 @@ const DebateArena = () => {
     setNameA(data.players.debater_a)
     setNameB(data.players.debater_b)
     setCurrentTurn(data.currentTurn)
+    if(data.topic){
+      setLocalTopic(data.topic)
+    }
     if (data.turnDuration !== undefined) {
       setLocalTurnDuration(data.turnDuration)
       setTurnTimeLeft(data.turnDuration === 0 ? -1 : data.turnDuration)
@@ -283,7 +288,7 @@ const DebateArena = () => {
           Share the room code with your opponent
         </p>
         <div className="relative z-10 text-[0.65rem] text-neutral-700 max-w-xs text-center italic">
-          "{currentTopic || 'No topic set'}"
+          "{localTopic || 'No topic set'}"
         </div>
       </div>
     )
@@ -360,7 +365,7 @@ const DebateArena = () => {
       {/* Topic bar */}
       <div className="px-6 py-2 bg-[#0a0a0a] border-b border-neutral-800 shrink-0">
         <p className="text-[0.7rem] text-neutral-500 text-center truncate italic">
-          "{currentTopic || 'No topic set'}"
+          "{localTopic || 'No topic set'}"
         </p>
       </div>
 
