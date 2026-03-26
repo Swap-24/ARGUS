@@ -1,37 +1,34 @@
-"""
-analyze.py
-POST /analyze — runs the full ML pipeline on an argument.
-All four models run, scores are aggregated into a final 0-100 score.
-"""
-
 from fastapi import APIRouter
 from schemas.argument import ArgumentRequest, ScoreResponse, ScoreBreakdown
 from models.sentiment import score_sentiment
 from models.relevance import score_relevance
 from models.argument_scorer import score_argument_strength, detect_fallacies
 
+import asyncio
+
 router = APIRouter()
 
-# ── Scoring weights (must sum to 1.0) ────────────────────────────────────────
+# ── Scoring weights ──────────────────────────────────────────────
 WEIGHTS = {
-    "argument_strength": 0.40,  # most important — is the logic sound?
-    "relevance":         0.30,  # is it on topic?
-    "sentiment":         0.20,  # is the framing confident?
-    "no_fallacy":        0.10,  # bonus for clean argumentation
+    "argument_strength": 0.40,
+    "relevance":         0.30,
+    "sentiment":         0.20,
+    "no_fallacy":        0.10,
 }
 
 
-def generate_feedback(scores: ScoreBreakdown, fallacies: list[str], final: int) -> str:
-    """Generate a short human-readable feedback string based on scores."""
+# ── Feedback generator (clean UX) ────────────────────────────────
+def generate_feedback(scores: ScoreBreakdown, fallacies: list[dict], final: int) -> str:
     if fallacies:
-        fallacy_label = fallacies[0].replace("_", " ").title()
-        return f"Flagged for {fallacy_label}. {_strength_comment(scores.argument_strength)}"
+        return f"{fallacies[0]['explanation']} {_strength_comment(scores.argument_strength)}"
+
     if final >= 80:
-        return "Excellent argument. Strong logic and solid evidence."
+        return "Excellent argument. Strong logic and solid reasoning."
     if final >= 65:
         return f"Good argument. {_relevance_comment(scores.relevance)}"
     if final >= 45:
         return f"Weak argument. {_strength_comment(scores.argument_strength)}"
+
     return "Very weak — try backing your claim with evidence or reasoning."
 
 
@@ -47,19 +44,36 @@ def _relevance_comment(relevance: float) -> str:
     return "Try to stay closer to the debate topic."
 
 
+# ── Main endpoint ────────────────────────────────────────────────
 @router.post("/analyze", response_model=ScoreResponse)
 async def analyze_argument(req: ArgumentRequest):
     text = req.argument_text.strip()
     topic = req.topic.strip()
 
-    # ── Run all four models ───────────────────────────────────────────────────
-    sentiment       = score_sentiment(text)
-    strength        = score_argument_strength(text)
-    relevance       = score_relevance(text, topic)
-    fallacies       = detect_fallacies(text)
-    fallacy_penalty = min(1.0, len(fallacies) * 0.4)  # 0 fallacies = 0, 1 = 0.4, 2+ = capped at 1.0
+    # 🔥 Run async for all heavy tasks
+    sentiment_task = asyncio.to_thread(score_sentiment, text)
+    sentiment_data = await sentiment_task
 
-    # ── Weighted aggregate ────────────────────────────────────────────────────
+# Local models first
+    strength = score_argument_strength(text)
+    relevance = score_relevance(text, topic)
+
+# 🔥 NOW pass strength (IMPORTANT)
+    fallacies = detect_fallacies(text, strength)
+
+    sentiment = sentiment_data["score"]
+
+    # Local models
+    strength = score_argument_strength(text)
+    relevance = score_relevance(text, topic)
+
+    # Extract fallacy types + explanations
+    fallacy_types = [f["type"] for f in fallacies]
+    fallacy_explanations = [f["explanation"] for f in fallacies]
+
+    fallacy_penalty = min(1.0, len(fallacy_types) * 0.4)
+
+    # ── Final score ──────────────────────────────────────────────
     raw_score = (
         strength  * WEIGHTS["argument_strength"] +
         relevance * WEIGHTS["relevance"] +
@@ -81,6 +95,11 @@ async def analyze_argument(req: ArgumentRequest):
     return ScoreResponse(
         scores=scores,
         final_score=final_score,
-        fallacies_detected=fallacies,
+
+        # 🔥 Clean outputs for frontend
+        fallacies_detected=fallacy_types,
+        fallacy_explanations=fallacy_explanations,
+
         feedback=feedback,
+        sentiment_justification=sentiment_data["justification"],
     )

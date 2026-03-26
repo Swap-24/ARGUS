@@ -1,34 +1,32 @@
 """
 argument_scorer.py
-Uses facebook/bart-large-mnli for two jobs:
-  1. Argument strength — zero-shot classify against logical quality labels
-  2. Fallacy detection — zero-shot classify against known fallacy patterns
+Hybrid approach:
+- Local model (BART) → argument strength
+- Gemini → fallacy detection + explanation
 """
 
 from transformers import pipeline
 import torch
+from google import genai
+import os
+import json
+import re
+
+# ✅ Use env variable instead of hardcoding
+client = genai.Client(api_key="AIzaSyChUVZIVc7RxTf8LvLn3wNHEnAZtyAM2dE")
 
 _zero_shot_pipe = None
 
-# Strength labels — BART decides how well the argument matches these
+# ────────────────────────────────────────────────────────────────
+# Argument Strength (Local Model)
+# ────────────────────────────────────────────────────────────────
+
 STRENGTH_LABELS = [
     "a well-reasoned argument supported by evidence",
     "a clear and logical claim",
     "a weak or unsupported assertion",
     "an emotional appeal without logic",
 ]
-
-# Fallacy patterns — if any score above threshold, it's flagged
-FALLACY_LABELS = {
-    "ad_hominem":           "attacking the person instead of their argument",
-    "straw_man":            "misrepresenting the opponent's argument",
-    "appeal_to_authority":  "citing authority without relevant evidence",
-    "false_dichotomy":      "presenting only two options when more exist",
-    "slippery_slope":       "claiming one event will lead to extreme consequences without justification",
-    "hasty_generalization": "drawing broad conclusions from limited examples",
-}
-
-FALLACY_THRESHOLD = 0.55  # confidence needed to flag a fallacy
 
 
 def get_zero_shot_pipeline():
@@ -44,16 +42,11 @@ def get_zero_shot_pipeline():
 
 
 def score_argument_strength(text: str) -> float:
-    """
-    Classifies argument against strength labels.
-    Returns a 0-1 score based on how strongly it matches positive labels.
-    """
     pipe = get_zero_shot_pipeline()
-    result = pipe(text[:1024], candidate_labels=STRENGTH_LABELS, multi_label=False)
 
+    result = pipe(text[:1024], candidate_labels=STRENGTH_LABELS, multi_label=False)
     label_scores = dict(zip(result["labels"], result["scores"]))
 
-    # Positive labels add to score, negative labels subtract
     score = (
         label_scores.get("a well-reasoned argument supported by evidence", 0) * 1.0 +
         label_scores.get("a clear and logical claim", 0) * 0.7 -
@@ -61,25 +54,94 @@ def score_argument_strength(text: str) -> float:
         label_scores.get("an emotional appeal without logic", 0) * 0.3
     )
 
-    # Clamp to [0, 1]
     return round(max(0.0, min(1.0, score)), 4)
 
 
-def detect_fallacies(text: str) -> list[str]:
+# ────────────────────────────────────────────────────────────────
+# Gemini Fallacy Detection (🔥 upgraded)
+# ────────────────────────────────────────────────────────────────
+
+def extract_json(text: str) -> dict:
+    """Safely extract JSON from Gemini response."""
+    text = re.sub(r"```json|```", "", text).strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+
+    if not match:
+        raise ValueError("No JSON found in Gemini response")
+
+    return json.loads(match.group(0))
+
+
+def detect_fallacies(text: str, strength: float) -> list[dict]:
     """
-    Checks argument against all known fallacy patterns.
-    Returns list of fallacy keys that exceed the confidence threshold.
+    Smarter fallacy detection:
+    - High-quality arguments → avoid nitpicking
+    - Low-quality arguments → detect aggressively
     """
-    pipe = get_zero_shot_pipeline()
-    labels = list(FALLACY_LABELS.values())
-    keys = list(FALLACY_LABELS.keys())
 
-    result = pipe(text[:1024], candidate_labels=labels, multi_label=True)
-    label_scores = dict(zip(result["labels"], result["scores"]))
+    prompt = f"""
+You are an expert debate judge.
 
-    detected = []
-    for key, description in FALLACY_LABELS.items():
-        if label_scores.get(description, 0) >= FALLACY_THRESHOLD:
-            detected.append(key)
+Argument:
+"{text}"
 
-    return detected
+Argument strength score: {strength}
+
+Your task:
+- Detect logical fallacies ONLY if they significantly weaken the argument.
+- DO NOT nitpick minor issues in strong arguments.
+- If strength > 0.7 → ONLY flag serious flaws.
+- If strength < 0.4 → aggressively detect flaws.
+- If argument is insulting/dismissive → MUST detect ad_hominem.
+
+Important:
+- A strong argument can still have minor flaws — IGNORE those.
+- Only return fallacies if they meaningfully impact quality.
+
+Possible fallacies:
+- ad_hominem
+- straw_man
+- appeal_to_authority
+- false_dichotomy
+- slippery_slope
+- hasty_generalization
+
+Return ONLY JSON:
+{{
+  "fallacies": [
+    {{
+      "type": "fallacy_name",
+      "explanation": "short explanation"
+    }}
+  ]
+}}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=prompt,
+        )
+
+        raw = response.text
+        data = extract_json(raw)
+        fallacies = data.get("fallacies", [])
+
+        # 🔥 FINAL SAFETY FILTER (VERY IMPORTANT)
+
+        # If strong argument → only allow serious fallacies
+        if strength > 0.7:
+            fallacies = [
+                f for f in fallacies
+                if f["type"] in ["ad_hominem", "straw_man"]
+            ]
+
+        # If VERY strong → remove everything
+        if strength > 0.85:
+            return []
+
+        return fallacies
+
+    except Exception as e:
+        print("FALLACY ERROR:", e)
+        return []

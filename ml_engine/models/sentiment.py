@@ -1,38 +1,67 @@
+from google import genai
+import json
+import re
+
+client = genai.Client(api_key="AIzaSyChUVZIVc7RxTf8LvLn3wNHEnAZtyAM2dE")
+
+
+def extract_json(text: str) -> str:
+    """
+    Extract JSON safely from Gemini response.
+    Handles markdown, extra text, and formatting issues.
+    """
+    # Remove markdown code blocks
+    text = re.sub(r"```json", "", text)
+    text = re.sub(r"```", "", text)
+
+    # Find first JSON object
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return match.group(0)
+
+    raise ValueError("No JSON found")
+
+
+def score_sentiment(text: str) -> dict:
+    prompt = f"""
+You are an expert debate judge.
+
+Evaluate this argument:
+
+"{text}"
+
+Return ONLY JSON (no markdown, no explanation outside JSON):
+{{
+  "confidence": 0.0,
+  "persuasiveness": 0.0,
+  "justification": "short explanation"
+}}
 """
-sentiment.py
-Uses DistilBERT fine-tuned on SST-2 to score argument confidence and tone.
-Returns a 0-1 float where 1 = highly positive/confident framing.
-"""
 
-from transformers import pipeline
-import torch
-
-_sentiment_pipe = None
-
-def get_sentiment_pipeline():
-    global _sentiment_pipe
-    if _sentiment_pipe is None:
-        device = 0 if torch.cuda.is_available() else -1
-        _sentiment_pipe = pipeline(
-            "text-classification",
-            model="distilbert-base-uncased-finetuned-sst-2-english",
-            device=device,
+    try:
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash-lite",
+            contents=prompt,
         )
-    return _sentiment_pipe
 
+        raw = response.text
+        print("RAW:", raw)
 
-def score_sentiment(text: str) -> float:
-    """
-    Returns a 0-1 score.
-    POSITIVE label → score as-is (confident, assertive framing)
-    NEGATIVE label → 1 - score (penalize overly negative/aggressive tone)
-    """
-    pipe = get_sentiment_pipeline()
-    result = pipe(text[:512])[0]  # truncate to model max
+        # 🔥 Extract clean JSON
+        clean_json = extract_json(raw)
 
-    if result["label"] == "POSITIVE":
-        return round(result["score"], 4)
-    else:
-        # Negative framing gets penalized but not zeroed —
-        # aggressive arguments can still be valid
-        return round(1 - result["score"] * 0.5, 4)
+        data = json.loads(clean_json)
+
+        score = (data["confidence"] + data["persuasiveness"]) / 2
+
+        return {
+            "score": round(score, 4),
+            "justification": data["justification"]
+        }
+
+    except Exception as e:
+        print("ERROR:", e)
+        return {
+            "score": 0.5,
+            "justification": "Fallback due to Gemini error"
+        }

@@ -1,7 +1,7 @@
 """
 main.py
 FastAPI entry point for the Argus ML engine.
-Models are preloaded on startup so the first request isn't slow.
+Only local models are preloaded (relevance + argument scorer).
 """
 
 from fastapi import FastAPI
@@ -9,25 +9,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from routers.analyze import router as analyze_router
 
-# Preload all models on startup
-from models.sentiment import get_sentiment_pipeline
+# Preload only the models we still use
 from models.relevance import get_embedding_model
 from models.argument_scorer import get_zero_shot_pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load all models into memory before accepting requests."""
+    """Load required models into memory before accepting requests."""
     print("Loading ML models...")
-    get_sentiment_pipeline()
-    print("  ✓ Sentiment model (DistilBERT)")
+
+    # ❌ REMOVED sentiment model (now using API)
+
     get_embedding_model()
     print("  ✓ Relevance model (Sentence-BERT)")
+
     get_zero_shot_pipeline()
     print("  ✓ Argument scorer (BART)")
+
     print("All models loaded. Ready.")
     yield
-    # Cleanup on shutdown (nothing needed for now)
+    # Cleanup on shutdown (nothing needed)
 
 
 app = FastAPI(
