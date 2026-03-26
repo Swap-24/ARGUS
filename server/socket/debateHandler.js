@@ -179,7 +179,11 @@ export const registerDebateHandlers = (io, socket) => {
 
     const history = room.args.map(a => a.text)
     const result = await scoreArgument(text, room.topic, history)
+<<<<<<< HEAD
     console.log('ML RESULT:', JSON.stringify(result, null, 2))
+=======
+    console.log('ML RESULT:', JSON.stringify(result, null, 2)) 
+>>>>>>> 3b8a850 (Conflicts resolved)
 
     const newArg = {
       text,
