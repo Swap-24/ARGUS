@@ -14,11 +14,11 @@ def extract_json(text: str) -> str:
     Extract JSON safely from Gemini response.
     Handles markdown, extra text, and formatting issues.
     """
-    # Remove markdown code blocks
+
     text = re.sub(r"```json", "", text)
     text = re.sub(r"```", "", text)
 
-    # Find first JSON object
+    
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         return match.group(0)
