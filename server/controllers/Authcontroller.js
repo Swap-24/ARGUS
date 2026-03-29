@@ -38,7 +38,7 @@ export const register = async (req, res) => {
     const token = signToken(user)
     return res.status(201).json({
       token,
-      user: { id: user._id, username: user.username, email: user.email },
+      user: { id: user._id, username: user.username, email: user.email, elo: user.elo },
     })
 
   } catch (err) {
@@ -66,7 +66,7 @@ export const login = async (req, res) => {
     const token = signToken(user)
     return res.json({
       token,
-      user: { id: user._id, username: user.username, email: user.email },
+      user: { id: user._id, username: user.username, email: user.email, elo: user.elo },
     })
 
   } catch (err) {

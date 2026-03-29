@@ -11,6 +11,7 @@ import {
   deleteRoom,
   getRoomBySocket,
 } from './roomManager.js'
+import { updateEloAfterDebate } from '../services/eloService.js'
 
 const TURN_DURATION = 30
 const CHARGE_PER_GOOD_ARG = 34
@@ -87,20 +88,40 @@ const advanceTurn = (io, room) => {
   startTurnTimer(io, room)
 }
 
-const endDebate = (io, room) => {
+const endDebate = async (io, room) => {
   clearInterval(room.debateTimer)
   clearInterval(room.turnTimer)
   room.status = 'finished'
+
+  // Guard against duplicate Elo updates
+  if (room.eloProcessed) return
+  room.eloProcessed = true
+
   const { debater_a, debater_b } = room.scores
   const winner = debater_a > debater_b
     ? room.players.debater_a?.username
     : debater_b > debater_a
       ? room.players.debater_b?.username
       : null
+
+  // Determine outcome for Elo
+  const outcome = debater_a > debater_b ? 'a'
+                : debater_b > debater_a ? 'b'
+                : 'draw'
+
+  const usernameA = room.players.debater_a?.username
+  const usernameB = room.players.debater_b?.username
+
+  let eloUpdate = null
+  if (usernameA && usernameB) {
+    eloUpdate = await updateEloAfterDebate(usernameA, usernameB, outcome, room.topic)
+  }
+
   io.to(room.roomId).emit('debate_ended', {
     scores: room.scores,
     winner,
     args: room.args,
+    eloUpdate,
   })
 }
 
@@ -250,7 +271,7 @@ export const registerDebateHandlers = (io, socket) => {
   })
 
   // ── admit_defeat ────────────────────────────────────────────────────────────
-  socket.on('admit_defeat', ({ roomId, role, username }) => {
+  socket.on('admit_defeat', async ({ roomId, role, username }) => {
     const room = getRoom(roomId)
     if (!room || room.status !== 'active') return
 
@@ -259,15 +280,30 @@ export const registerDebateHandlers = (io, socket) => {
 
     room.status = 'finished'
 
+    // Guard against duplicate Elo updates
+    if (room.eloProcessed) return
+    room.eloProcessed = true
+
     const winner = role === 'debater_a'
       ? room.players.debater_b?.username
       : room.players.debater_a?.username
+
+    // Loser is the one who admitted defeat
+    const outcome = role === 'debater_a' ? 'b' : 'a'
+    const usernameA = room.players.debater_a?.username
+    const usernameB = room.players.debater_b?.username
+
+    let eloUpdate = null
+    if (usernameA && usernameB) {
+      eloUpdate = await updateEloAfterDebate(usernameA, usernameB, outcome, room.topic)
+    }
 
     io.to(roomId).emit('debate_ended', {
       scores: room.scores,
       winner,
       args: room.args,
       reason: `${username} admitted defeat`,
+      eloUpdate,
     })
 
     setTimeout(() => deleteRoom(roomId), 5000)

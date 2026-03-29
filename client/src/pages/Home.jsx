@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDebate } from '../context/DebateContext'
 import { useAuth }   from '../context/AuthContext'
+import Leaderboard   from '../components/Leaderboard'
 
 const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
@@ -378,17 +379,27 @@ const Home = () => {
         ) : (
           <div className="animate-fade-up">
             <div className="flex items-center justify-between mb-8">
-              <p className="text-[0.75rem] tracking-[0.15em] text-neutral-500">
-                Welcome, <span className="text-yellow-400 font-medium">{username}</span>. Choose your path.
-              </p>
-              <button
-                onClick={logout}
-                className="text-[0.6rem] tracking-widest text-neutral-700
-                           border border-neutral-800 px-3 py-1.5
-                           hover:border-red-500/40 hover:text-red-400 transition-all cursor-pointer"
-              >
-                LOGOUT
-              </button>
+              <div className="flex items-center gap-4">
+                <p className="text-[0.75rem] tracking-[0.15em] text-neutral-500">
+                  Welcome, <span className="text-yellow-400 font-medium">{username}</span>.
+                </p>
+                {user?.elo !== undefined && (
+                  <span className="text-[0.6rem] tracking-widest text-neutral-600
+                                   border border-neutral-800 px-2.5 py-1 bg-neutral-900">
+                    ELO <span className="text-yellow-400 font-bold font-cinzel">{user.elo}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={logout}
+                  className="text-[0.6rem] tracking-widest text-neutral-700
+                             border border-neutral-800 px-3 py-1.5
+                             hover:border-red-500/40 hover:text-red-400 transition-all cursor-pointer"
+                >
+                  LOGOUT
+                </button>
+              </div>
             </div>
             <div className="flex items-stretch">
               <CreatePanel username={username} />
@@ -399,6 +410,9 @@ const Home = () => {
               </div>
               <JoinPanel username={username} />
             </div>
+
+            {/* ── Leaderboard ─────────────────────────────────────────── */}
+            <Leaderboard currentUsername={username} />
           </div>
         )}
       </main>
