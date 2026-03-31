@@ -17,7 +17,7 @@ const TURN_DURATION = 30
 const CHARGE_PER_GOOD_ARG = 34
 const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8000'
 
-// ── Mock scorer (replace with real FastAPI call in Step 4) ────────────────────
+// ── ML scorer ────────────────────────────────────────────────────────────────
 const scoreArgument = async (text, topic, history) => {
   try {
     const res = await axios.post(`${ML_ENGINE_URL}/analyze`, {
@@ -25,7 +25,7 @@ const scoreArgument = async (text, topic, history) => {
       topic,
       debate_history: history,
       speaker: 'user',
-    })
+    }, { timeout: 15000 })
     return res.data
   } catch {
     // Fallback mock if FastAPI isn't running yet
@@ -195,35 +195,53 @@ export const registerDebateHandlers = (io, socket) => {
     if (!room || room.status !== 'active') return
     if (room.currentTurn !== speaker) return
 
-    clearInterval(room.turnTimer)
+    // ⏸ Pause debate timer while ML scores
     clearInterval(room.debateTimer)
+    io.to(roomId).emit('debate_paused', { reason: 'scoring' })
 
-    const history = room.args.map(a => a.text)
-    const result = await scoreArgument(text, room.topic, history)
-    console.log('ML RESULT:', JSON.stringify(result, null, 2)) 
-
-    const newArg = {
-      text,
-      speaker,
-      finalScore: result.final_score,
-      fallacies: result.fallacies_detected,
-      feedback: result.feedback,
-      scores: result.scores,
-    }
-
-    room.args.push(newArg)
-    room.scores[speaker] += result.final_score
-
-    if (result.final_score >= 70) {
-      room.charges[speaker] = Math.min(100, room.charges[speaker] + CHARGE_PER_GOOD_ARG)
-    }
-
-    io.to(roomId).emit('argument_scored', {
-      arg: newArg,
-      scores: room.scores,
-      charges: room.charges,
-    })
+    // 🔥 SWITCH TURN IMMEDIATELY — don't wait for ML scoring
     advanceTurn(io, room)
+
+    // 🔥 Score in the background — results arrive async via 'argument_scored'
+    const history = room.args.map(a => a.text)
+    scoreArgument(text, room.topic, history).then((result) => {
+      console.log('ML RESULT:', JSON.stringify(result, null, 2))
+
+      const newArg = {
+        text,
+        speaker,
+        finalScore: result.final_score,
+        fallacies: result.fallacies_detected,
+        feedback: result.feedback,
+        scores: result.scores,
+      }
+
+      room.args.push(newArg)
+      room.scores[speaker] += result.final_score
+
+      if (result.final_score >= 70) {
+        room.charges[speaker] = Math.min(100, room.charges[speaker] + CHARGE_PER_GOOD_ARG)
+      }
+
+      io.to(roomId).emit('argument_scored', {
+        arg: newArg,
+        scores: room.scores,
+        charges: room.charges,
+      })
+
+      // ▶ Resume debate timer now that scoring is done
+      if (room.status === 'active') {
+        startDebateTimer(io, room)
+        io.to(roomId).emit('debate_resumed')
+      }
+    }).catch((err) => {
+      console.error('ML scoring failed:', err.message)
+      // Resume timer even on error so the game doesn't freeze
+      if (room.status === 'active') {
+        startDebateTimer(io, room)
+        io.to(roomId).emit('debate_resumed')
+      }
+    })
   })
 
   // ── interject ───────────────────────────────────────────────────────────────
@@ -236,11 +254,11 @@ export const registerDebateHandlers = (io, socket) => {
     room.charges[role] = 0
     clearInterval(room.turnTimer)
 
-    io.to(roomId).emit('interject_used', { by: role, charges: room.charges })
+    io.to(room.roomId).emit('interject_used', { by: role, charges: room.charges })
 
     setTimeout(() => {
       room.currentTurn = role
-      io.to(roomId).emit('turn_changed', { currentTurn: room.currentTurn })
+      io.to(room.roomId).emit('turn_changed', { currentTurn: room.currentTurn })
       startTurnTimer(io, room)
     }, 1200)
   })

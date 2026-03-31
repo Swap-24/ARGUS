@@ -17,16 +17,12 @@ WEIGHTS = {
 }
 
 
-# ── Feedback generator (clean UX) ────────────────────────────────
+# ── Feedback generator ────────────────────────────────────────────
 def generate_feedback(scores: ScoreBreakdown, fallacies: list[dict], final: int, sentiment_justification: str = "") -> str:
     if fallacies:
         return f"{fallacies[0]['explanation']} {_strength_comment(scores.argument_strength)}"
-
-    # Use Gemini's own justification — it's already tailored to the argument
     if sentiment_justification:
         return f"{sentiment_justification} {_strength_comment(scores.argument_strength)}"
-
-    # Fallback only if Gemini failed entirely
     if final >= 80:
         return "Excellent argument. Strong logic and solid reasoning."
     if final >= 65:
@@ -34,6 +30,7 @@ def generate_feedback(scores: ScoreBreakdown, fallacies: list[dict], final: int,
     if final >= 45:
         return f"Weak argument. {_strength_comment(scores.argument_strength)}"
     return "Very weak — try backing your claim with evidence or reasoning."
+
 
 def _strength_comment(strength: float) -> str:
     if strength >= 0.7: return "Logic is sound."
@@ -64,28 +61,25 @@ async def analyze_argument(req: ArgumentRequest):
             sentiment_justification="Input too short."
         )
 
-    # 🔥 Run async for all heavy tasks
-    sentiment_task = asyncio.to_thread(score_sentiment, text)
-    sentiment_data = await sentiment_task
-
-# Local models first
-    strength = score_argument_strength(text)
-    relevance = score_relevance(text, topic)
-
-# 🔥 NOW pass strength (IMPORTANT)
-    fallacies = detect_fallacies(text, strength)
+    # 🔥 Run ALL 4 tasks in parallel — maximum speed
+    sentiment_data, strength, relevance, fallacies = await asyncio.gather(
+        asyncio.to_thread(score_sentiment, text),
+        asyncio.to_thread(score_argument_strength, text),
+        asyncio.to_thread(score_relevance, text, topic),
+        asyncio.to_thread(detect_fallacies, text, 0.5),  # default strength hint
+    )
 
     sentiment = sentiment_data["score"]
 
-    # Local models
-    strength = score_argument_strength(text)
-    relevance = score_relevance(text, topic)
+    # Post-filter fallacies if argument turned out strong
+    if strength > 0.85:
+        fallacies = []
+    elif strength > 0.7:
+        fallacies = [f for f in fallacies if f["type"] in ["ad_hominem", "straw_man"]]
 
-    # Extract fallacy types + explanations
-    fallacy_types = [f["type"] for f in fallacies]
+    fallacy_types        = [f["type"] for f in fallacies]
     fallacy_explanations = [f["explanation"] for f in fallacies]
-
-    fallacy_penalty = min(1.0, len(fallacy_types) * 0.4)
+    fallacy_penalty      = min(1.0, len(fallacy_types) * 0.4)
 
     # ── Final score ──────────────────────────────────────────────
     raw_score = (
@@ -109,11 +103,8 @@ async def analyze_argument(req: ArgumentRequest):
     return ScoreResponse(
         scores=scores,
         final_score=final_score,
-
-        # 🔥 Clean outputs for frontend
         fallacies_detected=fallacy_types,
         fallacy_explanations=fallacy_explanations,
-
         feedback=feedback,
         sentiment_justification=sentiment_data["justification"],
     )

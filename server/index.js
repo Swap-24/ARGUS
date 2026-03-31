@@ -15,10 +15,7 @@ const server = http.createServer(app)
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174'
-  ],
+  origin: (origin, cb) => cb(null, true), // allow all origins for LAN demo
   credentials: true,
 }))
 app.use(express.json())
@@ -31,10 +28,7 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:5174'
-    ],
+    origin: (origin, cb) => cb(null, true), // allow all origins for LAN demo
     methods: ['GET', 'POST'],
   },
 })
