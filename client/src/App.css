@@ -23,3 +23,10 @@
 
 .font-cinzel    { font-family: 'Cinzel', serif; }
 .font-mono-plex { font-family: 'IBM Plex Mono', monospace; }
+
+/* Thin scrollbar for leaderboard */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #555; }
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: #333 transparent; }
