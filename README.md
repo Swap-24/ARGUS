@@ -204,7 +204,7 @@ argus/
 - [x] INTERJECT ultimate ability
 - [x] Custom debate duration
 - [x] Spectator mode
-- [ ] Elo rating system
+- [x] Elo rating system
 - [ ] Random matchmaking by Elo bracket
 - [ ] Persistent debate history + replay
 - [ ] AI Devil's Advocate mode
