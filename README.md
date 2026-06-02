@@ -221,5 +221,5 @@ Pull requests welcome. For major changes please open an issue first.
 ---
 
 <div align="center">
-  <sub>Built with 👁 by KIIT0001</sub>
+  <sub>Built with 👁 for 6th sem Minor Project</sub>
 </div>
